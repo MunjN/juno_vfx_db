@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Juno VFX Embedded Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/powerbi-client@2.19.1/dist/powerbi.min.js"></script> 
+   <style>
+    body {
+      background-color: black;
+      color: white;
+      margin: 0;
+      font-family: Arial, sans-serif;
+    }
+    </style>
+</head>
+<body>
+  <div id="reportContainer" style="width: 100%; height: 800px; border: 0px solid #ccc; display: none;"></div>
+
+  <script>
+    (async function () {
+ 
+      const backendUrl = "https://aws-generic-db.onrender.com";
+      // Password for accessing the dashboard
+      const correctPassword = "juno-vfx";
+
+      // Ask for the password when the page loads
+      function requestPassword() {
+        const enteredPassword = prompt("Please enter the password to access the dashboard:");
+        return enteredPassword === correctPassword;
+      }
+
+      // Main logic for embedding the dashboard
+      let embedToken = null;
+      const embedUrl = "https://app.powerbi.com/reportEmbed?reportId=88d49e40-1708-49c4-a55d-8f51e7171ae1&groupId=7916161d-03a9-442a-aca3-c6d0eddf87aa&w=2&config=eyJjbHVzdGVyVXJsIjoiaHR0cHM6Ly9XQUJJLUNBTkFEQS1DRU5UUkFMLXJlZGlyZWN0LmFuYWx5c2lzLndpbmRvd3MubmV0IiwiZW1iZWRGZWF0dXJlcyI6eyJ1c2FnZU1ldHJpY3NWTmV4dCI6dHJ1ZX19";
+      async function fetchAuthToken() {
+        const response = await fetch(`${backendUrl}/auth-token`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!response.ok) throw new Error('Failed to get auth token');
+        const data = await response.json();
+        return data.access_token;
+      }
+
+      async function fetchEmbedToken(authToken) {
+        const response = await fetch(`${backendUrl}/embed-token`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ authToken: authToken })
+        });
+
+        if (!response.ok) throw new Error('Failed to get embed token');
+        const data = await response.json();
+        embedToken = data.token;
+      }
+
+      function embedReport() {
+        const models = window["powerbi-client"].models;
+        const config = {
+          type: "report",
+          tokenType: models.TokenType.Embed,
+          accessToken: embedToken,
+          embedUrl: embedUrl,
+          id: "88d49e40-1708-49c4-a55d-8f51e7171ae1",
+          permissions: models.Permissions.All,
+          settings: {
+            filterPaneEnabled: false,
+            navContentPaneEnabled: true
+          }
+        };
+
+        const container = document.getElementById("reportContainer");
+        powerbi.reset(container); 
+        powerbi.embed(container, config);
+
+        console.log("Report embedded successfully");
+      }
+
+      async function initialize() {
+        try {
+          const authToken = await fetchAuthToken();
+          await fetchEmbedToken(authToken);
+          embedReport();
+
+          // Schedule a token refresh 40 minutes before the 45-minute expiration
+          const refreshInterval = (45 * 60 * 1000) - (5 * 60 * 1000); // 40 minutes
+          setInterval(async () => {
+            try {
+              console.log("Refreshing embed token...");
+              const newAuthToken = await fetchAuthToken();
+              await fetchEmbedToken(newAuthToken);
+              embedReport(); // Re-embed the report with the new token
+              console.log("Embed token refreshed successfully");
+            } catch (error) {
+              console.error("Failed to refresh embed token:", error);
+            }
+          }, refreshInterval);
+        } catch (error) {
+          console.error("Error initializing report:", error);
+        }
+      }
+
+      // Ask for the password and initialize if correct
+      if (requestPassword()) {
+        document.getElementById("reportContainer").style.display = "block";
+        initialize();
+      } else {
+        alert("Incorrect password. Access denied.");
+      }
+    })();
+  </script>
+</body>
+</html>
